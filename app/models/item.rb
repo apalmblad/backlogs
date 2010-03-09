@@ -94,7 +94,11 @@ class Item < ActiveRecord::Base
   end
 
   def self.find_by_project(project)
-    find(:all, :include => :issue, :conditions => "issues.project_id=#{project.id} and items.parent_id=0", :order => "items.position ASC")
+    find(:all,
+        :select => "items.*, trackers.name AS tracker_name, issues.tracker_id AS tracker_id",
+        :joins => "JOIN issues ON items.issue_id = issues.id JOIN issue_statuses ON issue_statuses.id = issues.status_id JOIN trackers ON trackers.id = issues.tracker_id",
+        :conditions => "issues.project_id=#{project.id} and items.parent_id=0 AND issue_statuses.is_closed = 0",
+        :order => "items.position ASC")
   end
 
   def self.remove_with_issue(issue)
@@ -127,6 +131,12 @@ class Item < ActiveRecord::Base
         return 2
       end
     end
+  end
+  def tracker_name
+    read_attribute(:tracker_name) || issue.tracker.name
+  end
+  def tracker_id
+    read_attribute(:tracker_id) || issue.tracker.name
   end
   
   def update_position(params)
