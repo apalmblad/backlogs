@@ -118,8 +118,14 @@ class Item < ActiveRecord::Base
     if params[:prev]=="" || params[:prev].nil?
       1
     else
-      prev = Item.find(params[:prev]).position
-      prev + 1
+      Rails.logger.warn( "Searching for #{params[:prev]}" )
+      previous = Item.find(params[:prev])
+      if previous.position
+        return previous.position + 1 
+      else
+        previous.update_attribute( :position, 1 )
+        return 2
+      end
     end
   end
   
