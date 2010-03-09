@@ -57,7 +57,7 @@ class Backlog < ActiveRecord::Base
   
 
   def self.find_by_project(project)
-    find(:all, :include => :version, :conditions => "versions.project_id=#{project.id}", :order => "versions.effective_date ASC, versions.id ASC")
+    find(:all, :include => :version, :conditions => "versions.status = 'open' AND versions.project_id=#{project.id}", :order => "versions.effective_date ASC, versions.id ASC")
   end
   
   def self.update(params)
