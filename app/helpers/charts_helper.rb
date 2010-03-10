@@ -6,7 +6,16 @@ module ChartsHelper
   
   def scale_y(values, max = nil)
     max = max || values.max
-    values.map{|v| v==max ? 100 : (v.to_f/max).round(2)*100}.join(",")
+    values.map! do |v|
+      if max.zero?
+        0
+      elsif v == max
+        100
+      else
+       ( v.to_f / max).round(2)*100
+      end
+    end
+    values.join(",")
   end
   
   def x_step(values, data_points = nil)
