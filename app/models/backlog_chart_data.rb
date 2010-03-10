@@ -13,16 +13,17 @@ class BacklogChartData < ActiveRecord::Base
     data_today = BacklogChartData.find :first, :conditions => ["backlog_id=? AND created_at=?", backlog.id, Date.today.to_formatted_s(:db)]
 
     scope = Item.sum('points', :conditions => ["items.backlog_id=? AND items.parent_id=0", backlog.id])
+    total_hours = Item.sum('estimated_hours', :include => { :issue =>:status },
+        :conditions => ["items.backlog_id=? AND items.parent_id=0 AND issue_statuses.is_closed=0", backlog.id])
+    time_spent = Item.sum( 'time_entries.hours', :include => { :issue => :time_entries },
+          :conditions => ["items.backlog_id=? AND items.parent_id=0", backlog.id] )
     done  = Item.sum('points', :include => {:issue => :status}, :conditions => ["items.parent_id=0 AND items.backlog_id=? AND issue_statuses.is_closed=?", backlog.id, true])
     wip   = 0
     if data_today.nil?
-      create :scope => scope, :done => done, :backlog_id => backlog.id, :created_at => Date.today.to_formatted_s(:db)
-    else
-      data_today.scope = scope
-      data_today.done  = done
-      data_today.wip   = wip
-      data_today.save!
+      data_today = new( :backlog_id => backlog.id, :created_at => Date.today.to_formatted_s(:db) )
     end
+    data_today.attributes=( { :scope => scope, :done => done, :wip => wip, :total_hours =>total_hours, :time_spent => time_spent } )
+    data_today.save!
     data_today
   end
 
@@ -37,49 +38,48 @@ class BacklogChartData < ActiveRecord::Base
     return nil if data.nil? || data.length==0
 
     data_points = (end_date - data.first.created_at.to_date).to_i + 1
-    scope = []
-    done  = []
-    days  = []
+    r_val = {:scope => [], :time_spent =>[], :total_hours => [], :done => [], :days => []}
 
     data.each do |d|
-      scope << d.scope
-      done  << d.done
-      days  << d.created_at
+      r_val.keys.each do |k|
+        if k == :days
+          r_val[k]  << d.created_at
+        else
+          r_val[k] << d.send( k ) 
+        end
+      end
     end
 
-    (1..(data_points-days.length)).to_a.each do |i|
-      days << days.last + 1.day
+    (1..(data_points-r_val[:days].length)).to_a.each do |i|
+      r_val[:days] << r_val[:days].last + 1.day
+    end
+    [:scope, :time_spent,:total_hours].each do |k|
+      r_val[k] = r_val[k].fill( r_val[k].last, r_val[k].length, data_points - r_val[k].length)
     end
 
-    scope = scope.fill(scope.last, scope.length, data_points - scope.length)
-
-    speed = (done.last - done.first).to_f / done.length
-
-    best  = [done.last]
-    worst = [done.last]
-
-    if done.length > 1
-      while best.last < scope.last && best.last > 0 && (best.length+done.length <= scope.length)
+    best = [r_val[:done].last]
+    worst = [r_val[:done].last]
+    speed = (best.last - r_val[:done].first).to_f / r_val[:done].length
+    days_with_work = r_val[:done].length
+    if days_with_work  > 1
+      scope_last = r_val[:scope].last
+      while best.last <  scope_last && best.last > 0 && (best.length +  days_with_work <= r_val[:scope].length)
         best << (best.last + speed*1.5).round(2)
       end
-      best[best.length-1] = best.last > scope.last ? scope.last : best.last
+      best[best.length-1] = best.last > scope_last ? r_val[:scope].last : best.last
 
-      while worst.last < scope.last && worst.last > 0 && (worst.length+done.length <= scope.length)
+      while worst.last < scope_last && worst.last > 0 && (worst.length+ days_with_work <= r_val[:scope].length)
         worst << (worst.last + speed*0.5).round(2)
       end
-      worst[worst.length-1] = worst.last > scope.last ? scope.last : worst.last
+      worst[worst.length-1] = worst.last > scope_last ? scope_last : worst.last
     end
 
-    {
-      :days    => days,
-      :scope   => scope,
-      :scope_x => (0...scope.length).to_a,
-      :done    => done,
-      :done_x  => (0...done.length).to_a,
-      :best    => best,
-      :best_x  => (0...best.length).to_a.map{|n| n+done.length-1},
-      :worst   => worst,
-      :worst_x => (0...worst.length).to_a.map{|n| n+done.length-1}
-    }
+    r_val[:best] = best
+    r_val[:worst] = worst
+    
+    r_val.keys.each do |key|
+      r_val["#{key}_x".to_sym] = (0...r_val[key].length).to_a
+    end
+    return r_val
   end
 end
